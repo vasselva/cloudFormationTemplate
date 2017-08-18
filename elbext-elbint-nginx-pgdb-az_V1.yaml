@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'AWS CloudFormation Template for External ELB -> Internal ELB -> private subnet -> DB: Create a External and Internal
-  balanced nginx web server with ELB stickiness enabled. It creates Postgress DB
+  balanced nginx web servers with ELB stickiness enabled. It creates Postgress DB
   as Master in AZ and replica in other AZ. creates 2 EC2 instances behind
   a load balancer with a simple health check on private subnet with nat gateway attached. 
   Creates two public subnet with InternetGateway attached for external loadbalancer to serve the request
