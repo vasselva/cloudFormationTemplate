@@ -1,0 +1,1 @@
+This repo contains the cloudformation templates - my experiments with CFN 

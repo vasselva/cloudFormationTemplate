@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Testing cfn-hup and cfn-init on AMI and RHEL
+
+Parameters:
+  IAMUserSSHAccess:
+    Description: 'Synchronize public keys of IAM users to enable personalized SSH access (Doc: https://cloudonaut.io/manage-aws-ec2-ssh-access-with-iam/).'
+    Type: String
+    Default: false
+    AllowedValues:
+    - true
+    - false
+  DBName:
+    Default: pgdb
+    Description: The database name
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric   characters.
+Resources:
+  MyEC2Instance: #An inline comment
+    Type: "AWS::EC2::Instance"
+    Properties: 
+      ImageId: "ami-30041c53" # "ami-904f4cf3" 
+      InstanceType: t2.xlarge
+      KeyName: vasanth-sandpit
+      SecurityGroupIds: ["sg-XXXXXX"]
+      SubnetId: "subnet-XXXXXX"
+      BlockDeviceMappings:
+        -
+          DeviceName: /dev/sdm
+          Ebs:
+            VolumeType: io1
+            Iops: 200
+            DeleteOnTermination: false
+            VolumeSize: 50
+      UserData:
+        Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            yum -y install python-pip
+            /usr/bin/easy_install --script-dir /opt/aws/bin https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource MyEC2Instance --configsets Install --region ${AWS::Region}        
+    Metadata:
+      AWS::CloudFormation::Init:   
+        configSets:
+          Install:
+            - "config1"
+        config1:
+          commands:
+            test: 
+              command: "echo \"$MAGIC\" > /tmp/test.txt"
+              env: 
+                MAGIC: "dfsdfsdfsdfsdfsfsdfferwerwfi"
+              cwd: "~"          
+          packages:
+            yum:
+              nginx: []
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackName}
+                region=${AWS::Region}
+                interval=2
+                verbose=true
+              mode: "000400"
+              owner: "root"
+              group: "root"
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.MyEC2Instance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource MyEC2Instance --configsets Install --region ${AWS::Region}
+                runas=root
+              mode: "000400"
+              owner: "root"
+              group: "root"      
+          services: 
+            sysvinit: 
+              nginx: 
+                enabled: "true"
+                ensureRunning: "true"
+              cfn-hup:
+                enabled: "true"
+                ensureRunning: "true"
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf         
+Outputs:
+  MyEC2Instance:
+    Description:  EC2 Instance Id
+    Value:        !Ref MyEC2Instance
+  MyEC2InstanceIp:
+    Description:  EC2 Instance IP Address
+    Value:        !GetAtt MyEC2Instance.PrivateIp            
