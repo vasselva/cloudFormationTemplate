@@ -1,0 +1,82 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters" : {
+    "ExistingVPC" : {
+      "Type" : "AWS::EC2::VPC::Id",
+      "Description" : "The VPC ID that includes the security groups in the ExistingSecurityGroups parameter."
+    }
+  },
+  "Resources" : {
+    "LambdaExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{ "Effect": "Allow", "Principal": {"Service": ["lambda.amazonaws.com"]}, "Action": ["sts:AssumeRole"] }]
+        },
+        "Path": "/",
+        "Policies": [{
+          "PolicyName": "root",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [{ "Effect": "Allow", "Action": ["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"], "Resource": "arn:aws:logs:*:*:*" }]
+          }
+        }]
+      }
+    },
+    "RolePolicies": {
+        "Type": "AWS::IAM::Policy",
+        "Properties": {
+            "PolicyName": "ec2",
+            "PolicyDocument": {
+                "Version" : "2012-10-17",
+                "Statement" : [{
+                    "Effect": "Allow", "Action": ["ec2:*"], "Resource": "*"
+                }]
+            },
+            "Roles" : [{
+                "Ref" : "LambdaExecutionRole"
+            }]
+        }
+    },
+    "AppendItemToListFunction": {
+        "Type": "AWS::Lambda::Function",
+        "Properties": {
+          "Handler": "index.lambda_handler",
+          "Timeout": 8,
+          "FunctionName": "testLambda",
+          "Role": { "Fn::GetAtt" : ["LambdaExecutionRole", "Arn"] },
+          "Code": {
+            "ZipFile":  { "Fn::Join": ["\n", [
+                "import boto3",
+                "regions = ['ap-southeast-1','ap-southeast-2']",
+                "def lambda_handler(event, context):",
+                "    for region in regions:",
+                "        print region",
+                "        ids = []",
+                "        ec2 = boto3.resource('ec2',region_name=region)",
+                "        instances = ec2.instances.filter(Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])",
+                "        for instance in instances:",
+                "                print(instance.id, instance.instance_type)",
+                "                ids.append(instance.id)",
+                "        print 'stopping your instances: ' + str(ids)",
+                "        ec2.instances.filter(InstanceIds=ids).stop()"
+            ]]}
+          },
+          "Runtime": "python2.7"
+        }
+      },
+      "ScheduledRule": {
+        "Type": "AWS::Events::Rule",
+        "Properties": {
+          "Description": "ScheduledRule",
+          "ScheduleExpression": "rate(10 minutes)",
+          "State": "ENABLED",
+          "Targets": [{
+            "Arn": { "Fn::GetAtt": ["AppendItemToListFunction", "Arn"] },
+            "Id": "testLambda"
+          }]
+        }
+      }
+  }
+}
